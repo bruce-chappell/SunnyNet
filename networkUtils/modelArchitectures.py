@@ -164,7 +164,7 @@ class SunnyNet_5x5(nn.Module):
             in_channels = 6, 
             out_channels = 32,
             kernel_size = (5,5,5),
-            padding = (1,0,0)
+            padding = (2,0,0)
         )
         self.conv2 = nn.Conv1d(
             in_channels = 32, 
@@ -237,7 +237,7 @@ class SunnyNet_7x7(nn.Module):
             in_channels = 6, 
             out_channels = 32,
             kernel_size = (7,7,7),
-            padding = (1,0,0)
+            padding = (3,0,0)
         )
         self.conv2 = nn.Conv1d(
             in_channels = 32, 
