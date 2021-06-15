@@ -60,7 +60,19 @@ def run_epoch(mode, model, cur_epoch, dataLoaders, alpha, verbose = True):
     '''
     Runs epoch given the params in train()
     '''
-
+    
+    X_size = model.network.height
+    if X_size == 1:
+        k = 0
+    elif X_size == 3:
+        k = 1
+    elif X_size == 5:
+        k = 2
+    elif X_size == 7:
+        k = 3
+    else:
+        raise AttributeError('Currently only support models with square X/Y input dimmensions of: 1, 3, 5, 7')
+           
     epoch_loss = 0
     if verbose:
         print('-'*10, f'Epoch {cur_epoch}: {mode}', '-'*10)
@@ -75,7 +87,7 @@ def run_epoch(mode, model, cur_epoch, dataLoaders, alpha, verbose = True):
         batch_loss = model.loss_fxn(y_pred, y_true)
 
         if alpha:                                    #conservation of mass
-            X_pop = (10**X[...,1,1]).sum(1)          #sums across all levels (-1, 400)
+            X_pop = (10**X[...,k,k]).sum(1)          #sums across all levels (-1, 400)
             y_pop = (10**y_pred[...,0,0]).sum(1)
             batchloss = alpha * torch.nn.MSELoss()(y_pop, X_pop) + (1 - alpha) * batch_loss #add conservation of mass loss to batchLoss
             

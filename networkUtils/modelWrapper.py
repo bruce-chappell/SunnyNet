@@ -36,6 +36,20 @@ class Model():
                 self.network = DeeperRegressor(params['channels'], params['features'])
             elif params['model'] == 'RegressorBN':
                 self.network = RegressorBN(params['channels'], params['features'])
+
+            ######################### SUNNYNET ARCHITECTURES ############################ 
+            elif params['model'] == 'SunnyNet_1x1':
+                self.network = SunnyNet_1x1(params['channels'], params['features'],1,1)
+                
+            elif params['model'] == 'SunnyNet_3x3':
+                self.network = SunnyNet_3x3(params['channels'], params['features'],3,3)
+                
+            elif params['model'] == 'SunnyNet_5x5':
+                self.network = SunnyNet_5x5(params['channels'], params['features'],5,5)
+                
+            elif params['model'] == 'SunnyNet_7x7':
+                self.network = SunnyNet_7x7(params['channels'], params['features'],7,7)
+            ######################### SUNNYNET ARCHITECTURES ############################
                 
             elif params['model'] == 'BasicRegressor3D_3x3':
                 self.network = BasicRegressor3D_3x3(params['channels'], params['features'],3,3)
@@ -47,8 +61,7 @@ class Model():
                 
             elif params['model'] == 'Trans_3x3':
                 self.network = Trans_3x3(params['channels'], params['features'],3,3)
-            elif params['model'] == 'ColMass_3x3':
-                self.network = ColMass_3x3(params['channels'], params['features'],3,3)
+            
                 
             elif params['model'] == 'Trans_3x3_Deep':
                 self.network = Trans_3x3_Deep(params['channels'], params['features'],[3,3,3])
@@ -113,6 +126,20 @@ class Model():
                 self.network = DeeperRegressor(params['channels'], params['features'])
             elif params['model'] == 'RegressorBN':
                 self.network = RegressorBN(params['channels'], params['features'])
+            
+            ######################### SUNNYNET ARCHITECTURES ############################ 
+            elif params['model'] == 'SunnyNet_1x1':
+                self.network = SunnyNet_1x1(params['channels'], params['features'],1,1)
+                
+            elif params['model'] == 'SunnyNet_3x3':
+                self.network = SunnyNet_3x3(params['channels'], params['features'],3,3)
+                
+            elif params['model'] == 'SunnyNet_5x5':
+                self.network = SunnyNet_5x5(params['channels'], params['features'],5,5)
+                
+            elif params['model'] == 'SunnyNet_7x7':
+                self.network = SunnyNet_7x7(params['channels'], params['features'],7,7)
+            ######################### SUNNYNET ARCHITECTURES ############################
                 
             elif params['model'] == 'BasicRegressor3D_3x3':
                 self.network = BasicRegressor3D_3x3(params['channels'], params['features'],3,3)
@@ -124,8 +151,6 @@ class Model():
                 
             elif params['model'] == 'Trans_3x3':
                 self.network = Trans_3x3(params['channels'], params['features'],3,3)
-            elif params['model'] == 'ColMass_3x3':
-                self.network = ColMass_3x3(params['channels'], params['features'],3,3)
                 
             elif params['model'] == 'Trans_3x3_Deep':
                 self.network = Trans_3x3_Deep(params['channels'], params['features'],[3,3,3])
