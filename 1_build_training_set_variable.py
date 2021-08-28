@@ -8,45 +8,45 @@ from scipy.integrate import cumtrapz
 from scipy.ndimage import zoom
 
 '''
-This method lets us build training set with different window sizes, controlled by the pad variable.
+takes a collection or 1 population cube and turns it into a training and validation set of data points of shape
+(c, 400, 1, 1) / (c, 400, 3, 3) / (c, 400, 5, 5) / (c, 400, 7, 7) lte windows and (c, 400, 1, 1) non lte columns
 
-For example 1x1, 3x3, 5x5, 7x7
+these sets are then used to train an instance of sunny net
 '''
+
 
 #################### USER INPUTS ################
 
-save_path = ''
+save_path = 'example.hdf5'
 
-# corresponding multi3d atmos paths
-atmos1 = ['', , , ] # [path, atms_x, atms_y, atms_z]
-#atmos2 =
-#atmos3 =
-#atmos4 =
+# corresponding Multi3dAtmos paths
+atmos1 = ['path', , , ] # [path, atms_x, atms_y, atms_z]
+atmos2 = ['path', , , ]
+#atmos3 = ['path', , , ]
+#atmos4 = ['path', , , ]
 
-# name sims we want to sample from
+# Multi3dOut simulation paths
 path1 = ''
-#path2 =
-#path3 =
-#path4 =
+path2 = ''
+#path3 = ''
+#path4 = ''
 
 #path_holder = [path1, path2, path3, path4]
 #path_holder = [path3, path4]
-path_holder = [path1]
+path_holder = [path1, path2]
 
 #atmos_holder = [atmos1, atmos2, atmos3, atmos4]
 #atmos_holder = [atmos3, atmos4]
-atmos_holder = [atmos1]
+atmos_holder = [atmos1, atmos2]
 
 pad = 3;            # how big you want lte window to be, 0 = 1x1, 1 = 3x3, 2 = 5x5 ....
 dim = 252;          # original X/Y dim of simulation
 tr_percent = 85     # percent of snapshot to be used a training set, rest is validation set
 
-# accounts for expanding to include periodic BC's
-grid = dim + 2*pad;
+#################### END OF USER INPUTS ################
 
-#################### USER INPUTS ################
-
-
+k = dim*dim         # number of training/validation instances combined (helps control output file size)
+grid = dim + 2*pad; # accounts for expanding to include periodic BC's
 
 
 # check save path validity
@@ -121,9 +121,10 @@ for s, a in zip(path_holder, atmos_holder):
 print(f"Train / Test Split...")
 #get train/test indicies
 full_idx = np.arange(len(lte_list))
-tr = int(len(lte_list) * tr_percent/100)
-tr_idx = np.random.choice(full_idx, size = tr, replace=False)
-val_idx = np.setxor1d(tr_idx, full_idx)
+tr = int(k * tr_percent/100)
+idx = np.random.choice(full_idx, size = k, replace = False)
+tr_idx = np.random.choice(idx, size = tr, replace = False)
+val_idx = np.setxor1d(tr_idx, idx)
 
 lte = np.array(lte_list)
 non_lte = np.array(non_lte_list)
