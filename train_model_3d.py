@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     ## model parameters ##
     params = {
-        'model': 'SunnyNet_7x7', # pick one from networkUtilities/atmosphereFunctions
+        'model': 'SunnyNet_7x7', # pick one from networkUtilities/modelArchitectures.py
         'optimizer': 'Adam',     # only works with Adam right now, can add others from torch.optim to networkUtils/modelWrapper.py
         'loss_fxn': 'MSELoss',  # pick one from networkUtils/lossFunctions.py or a pyotch loss function class name ex MSELoss
         'learn_rate': 1e-3,
