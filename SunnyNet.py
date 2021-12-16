@@ -14,8 +14,7 @@ from networkUtils.dataSets import PopulationDataset3d
 from networkUtils.trainingFunctions import train
 
 
-def build_solving_set(lte_pops, rho, z_scale, 
-                      save_path="example.hdf5", ndep=400, pad=3):
+def build_solving_set(lte_pops, rho, z_scale, save_path="example.hdf5", ndep=400, pad=1):
     """
     Prepares populations from 3D simulation into a file to be fed into a trained network
     to make population predictions.
@@ -37,8 +36,10 @@ def build_solving_set(lte_pops, rho, z_scale,
         interpolated on a mean column mass scale. Does not need to be the
         same as the input nz. Default is 400.
     pad : int, optional
-        How many pixels to pad the populations in the x/y dimensions. 
-        Should be the same as the selected window size. Default is 3.
+        How many pixels to pad the each population column of interest in the
+        x and y dimensions. Should be consistent with the window size:
+        window size is 1 + 2*pad, so use pad=0 for 1x1, pad=1 for 3x3, 
+        and so on. Default is 1.
     """
     # check save path validity
     if os.path.isfile(save_path):
@@ -81,7 +82,7 @@ def build_solving_set(lte_pops, rho, z_scale,
 
 
 def build_training_set(lte_pops, nlte_pops, rho, z_scale,
-                       save_path="example.hdf5", ndep=400, pad=3, tr_percent=85):
+                       save_path="example.hdf5", ndep=400, pad=1, tr_percent=85):
     """
     Prepares populations from 3D simulation into a file to be fed into a network
     for training and validation.
@@ -113,8 +114,10 @@ def build_training_set(lte_pops, nlte_pops, rho, z_scale,
         interpolated on a mean column mass scale. Does not need to be the
         same as the input nz. Default is 400.
     pad : int, optional
-        How many pixels to pad the populations in the x/y dimensions. 
-        Should be the same as the selected window size. Default is 3.
+        How many pixels to pad the each population column of interest in the
+        x and y dimensions. Should be consistent with the window size:
+        window size is 1 + 2*pad, so use pad=0 for 1x1, pad=1 for 3x3, 
+        and so on. Default is 1.
     tr_percent : int, optional
         Percent of data to be used as a training set (the rest will be used
         for validation).
@@ -202,8 +205,45 @@ def build_training_set(lte_pops, nlte_pops, rho, z_scale,
         dset4.attrs["std"] = std_out
 
 
+def read_train_params(train_file):
+    """
+    Reads the parameters training size, testing size, channels, pad, 
+    and ndep from existing SunnyNet training HDF5 file.
+    """
+    tmp = h5py.File(train_file, 'r')
+    buf = tmp['lte training windows'].shape
+    train_size = buf[0]
+    test_size = tmp['lte test windows'].shape[0]
+    channels = buf[1]
+    ndep = buf[2]
+    pad = (buf[-1] - 1) // 2
+    tmp.close()
+    return train_size, test_size, channels, ndep, pad
+    
+
+def check_model_compat(model_type, pad, channels):
+    if model_type == 'SunnyNet_1x1':
+        m_channels = 6
+        m_pad = 0
+    elif model_type == 'SunnyNet_3x3':
+        m_channels = 6
+        m_pad = 1
+    elif model_type == 'SunnyNet_5x5':
+        m_channels = 6
+        m_pad = 2
+    elif model_type == 'SunnyNet_7x7':
+        m_channels = 6
+        m_pad = 3
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+    if (m_channels == channels) and (m_pad == pad):
+        return True
+    else:
+        return False
+
+
 def sunnynet_train_model(train_path, save_folder, save_file, model_type='SunnyNet_3x3',
-                         loss_function='MSELoss', alpha=0.2, channels=6, ndep=400, cuda=True):
+                         loss_function='MSELoss', alpha=0.2, cuda=True):
     """
     Trains a SunnyNet neural network model to be used to predict non-LTE populations.
     Needs a "train" file prepared with build_training_set(). Common options can
@@ -236,13 +276,17 @@ def sunnynet_train_model(train_path, save_folder, save_file, model_type='SunnyNe
     alpha : float or None, optional
         Weight in loss calculation between mass conservation and cell by
         cell error. Default is 0.2. To switch off entirely set to None.
-    channels : int, optional
-        Number of atomic levels. Default is 6.
-    ndep : int, optional
-        Number of atmospheric depth points. Default is 400.
     cuda : bool, optional
         Whether to use GPU acceleration through CUDA (default True).
     """
+    if os.path.exists(os.path.join(save_folder, save_file)):
+        raise IOError("Output file already exists, refusing to overwrite.")
+    if not os.path.isdir(save_folder):
+        os.mkdir(save_folder)
+    train_size, test_size, channels, ndep, pad = read_train_params(train_path)
+    if not check_model_compat(model_type, pad, channels):
+        raise ValueError(f"Incompatible sizes between model {model_type} "
+                         f"and training set (pad={pad}, channels={channels})")
     params = {
         'model': model_type, # pick one from networkUtilities/modelArchitectures.py
         # only works with Adam right now, 
@@ -262,15 +306,13 @@ def sunnynet_train_model(train_path, save_folder, save_file, model_type='SunnyNe
         'model_save': save_file,
         'early_stopping': 5, # iterations without lower loss before breaking training loop
         'num_epochs': 50,    # training epochs
-        'train_size': 53978, # manually calculate from your train / test split
+        'train_size': train_size, # manually calculate from your train / test split
         'batch_size_train': 128,
-        'val_size': 9526,    # manually calculate from your train / test split
+        'val_size': test_size,    # manually calculate from your train / test split
         'batch_size_val': 128,
         'num_workers': 64,   # CPU threads
         'alpha': alpha    # weight in loss calc. between mass conservation and cell by cell error
     }
-    if os.path.exists(os.path.join(config['save_folder'], config['model_save'])):
-        raise IOError("Output file already exists, refusing to overwrite.")
     print('Python VERSION:', sys.version)
     print('pyTorch VERSION:', torch.__version__)
     print('CUDA VERSION: ', torch.version.cuda)
@@ -309,7 +351,7 @@ def sunnynet_train_model(train_path, save_folder, save_file, model_type='SunnyNe
 
 def sunnynet_predict_populations(model_path, train_path, test_path, save_path, 
                                  cuda=True, model_type='SunnyNet_3x3', loss_function='MSELoss',
-                                 alpha=0.2, ndep=400, nx=252, channels=6):
+                                 alpha=0.2):
     """
     Predicts non-LTE populations using SunnyNet, using an existing trained set,
     model data, and input LTE populations pre-prepared with build_solving_set()
@@ -348,14 +390,12 @@ def sunnynet_predict_populations(model_path, train_path, test_path, save_path,
     alpha : float or None, optional
         Weight in loss calculation between mass conservation and cell by
         cell error. Default is 0.2. To switch off entirely set to None.
-    channels : int, optional
-        Number of atomic levels. Default is 6.
-    ndep : int, optional
-        Number of atmospheric depth points. Default is 400.
-    nx : int, optional
-        Number of pixels in x and y direction (they must be the same).
-        Needs to be the same as the original 3D atmosphere. Default is 252.
     """
+    n_train, n_test, channels, ndep, pad = read_train_params(train_path)
+    nx = int(np.sqrt(n_train + n_test))  # assuming square atmosphere
+    if not check_model_compat(model_type, pad, channels):
+        raise ValueError(f"Incompatible sizes between model {model_type} "
+                         f"and training set (pad={pad}, channels={channels})")    
     if os.path.isfile(save_path):
         raise IOError("Output file already exists. Refusing to overwrite.")
     pred_config = {
