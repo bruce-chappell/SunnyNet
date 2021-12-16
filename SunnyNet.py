@@ -14,7 +14,7 @@ from networkUtils.dataSets import PopulationDataset3d
 from networkUtils.trainingFunctions import train
 
 
-def build_solving_set(lte_pops, rho, z_scale, save_path="example.hdf5", ndep=400, pad=1):
+def build_solving_set(lte_pops, rho_mean, z_scale, save_path="example.hdf5", ndep=400, pad=1):
     """
     Prepares populations from 3D simulation into a file to be fed into a trained network
     to make population predictions.
@@ -24,8 +24,8 @@ def build_solving_set(lte_pops, rho, z_scale, save_path="example.hdf5", ndep=400
     lte_pops : 4D array
         Array with LTE populations. Shape should be (nx, ny, nz, nlevels),
         units in m^-3.
-    rho : 3D array
-        Array with mass density in 3D atmosphere. Shape should be (nx, ny, nz),
+    rho_mean : 1D array
+        Array with horizontally-averaged mass density. Shape should be (nz,),
         units in kg m^-3.
     z_scale : 1D array
         Height scale in m. First point should be top of atmosphere.
@@ -54,7 +54,6 @@ def build_solving_set(lte_pops, rho, z_scale, save_path="example.hdf5", ndep=400
     lte = np.pad(lte_pops, pad_width=npad, mode='wrap')
     print(f'LTE shape after padding: {lte.shape}')
     print('Starting Z interpolation...')
-    rho_mean = np.mean(rho, axis=(0,1))
     cmass_mean = cumtrapz(rho_mean, -z_scale, initial=0)
     cmass_scale = np.logspace(-6, 2, ndep)  # New log column mass scale, -6 to 2
     print('Interpolating functions...')
