@@ -89,7 +89,7 @@ def run_epoch(mode, model, cur_epoch, dataLoaders, alpha, verbose = True):
         if alpha:                                    #conservation of mass
             X_pop = (10**X[...,k,k]).sum(1)          #sums across all levels (-1, 400)
             y_pop = (10**y_pred[...,0,0]).sum(1)
-            batchloss = alpha * torch.nn.MSELoss()(y_pop, X_pop) + (1 - alpha) * batch_loss #add conservation of mass loss to batchLoss
+            batch_loss = alpha * torch.nn.MSELoss()(y_pop, X_pop) + (1 - alpha) * batch_loss #add conservation of mass loss to batchLoss
             
         #------------ BACKWARD ------------#
         if mode == 'train':
