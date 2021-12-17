@@ -80,7 +80,7 @@ def build_solving_set(lte_pops, rho_mean, z_scale, save_path="example.hdf5", nde
         dset4 = f.create_dataset("z", data=new_z, dtype='f')
 
 
-def build_training_set(lte_pops, nlte_pops, rho, z_scale,
+def build_training_set(lte_pops, nlte_pops, rho_mean, z_scale,
                        save_path="example.hdf5", ndep=400, pad=1, tr_percent=85):
     """
     Prepares populations from 3D simulation into a file to be fed into a network
@@ -96,7 +96,7 @@ def build_training_set(lte_pops, nlte_pops, rho, z_scale,
     nlte_pops : list or array_like
         List of 4D arrays with LTE populations to use for training. Same shape
         and units as lte_pops.
-    rho : list or array_like
+    rho_mean : list or array_like
         List with 1D arrays of spatially averaged mass density. Each item
         in list could be average density from a different snapshot and/or simulation.
         List should have at least one element. The shape of each array should be
@@ -131,10 +131,10 @@ def build_training_set(lte_pops, nlte_pops, rho, z_scale,
     lte_list = []
     non_lte_list = []
 
-    for lte_in, nlte_in, rho_mean, z in zip(lte_pops, nlte_pops, rho, z_scale):
+    for lte_in, nlte_in, rho_in, z in zip(lte_pops, nlte_pops, rho_mean, z_scale):
         print(f'rho shape {rho_mean.shape}')
         print(f'z shape {z.shape}')
-        cmass_mean = cumtrapz(rho_mean, -z, initial=0)
+        cmass_mean = cumtrapz(rho_in, -z, initial=0)
         cmass_scale = np.logspace(-6, 2, ndep)
         print('Interpolating functions...')
         f_lte = interp1d(cmass_mean, lte_in, kind='linear', 
