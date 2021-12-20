@@ -59,7 +59,6 @@ def build_solving_set(lte_pops, rho_mean, z_scale, save_path="example.hdf5", nde
     print('Interpolating functions...')
     f_lte = interp1d(cmass_mean, lte, kind='linear', axis=2, fill_value='extrapolate')
     f_z = interp1d(cmass_mean, z_scale, kind='linear', axis=-1, fill_value='extrapolate')
-    print('Applying new scale...')
     lte = f_lte(cmass_scale)
     new_z = f_z(cmass_scale)
     print('Rearranging and taking Log10...')
@@ -121,7 +120,7 @@ def build_training_set(lte_pops, nlte_pops, rho_mean, z_scale,
         Percent of data to be used as a training set (the rest will be used
         for validation).
     """
-    nx, ny = lte_pops[0].shape[:2]
+    nx, ny, _, nlevels = lte_pops[0].shape
     k = nx * ny  # number of training/validation instances combined (helps control output file size)
     grid = nx + 2*pad  # accounts for expanding to include periodic BC's
     npad = ((pad,pad),(pad,pad),(0,0),(0,0))
@@ -132,7 +131,7 @@ def build_training_set(lte_pops, nlte_pops, rho_mean, z_scale,
     non_lte_list = []
 
     for lte_in, nlte_in, rho_in, z in zip(lte_pops, nlte_pops, rho_mean, z_scale):
-        print(f'rho shape {rho_mean.shape}')
+        print(f'rho shape {rho_in.shape}')
         print(f'z shape {z.shape}')
         cmass_mean = cumtrapz(rho_in, -z, initial=0)
         cmass_scale = np.logspace(-6, 2, ndep)
