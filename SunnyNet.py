@@ -217,6 +217,19 @@ def read_train_params(train_file):
     pad = (buf[-1] - 1) // 2
     tmp.close()
     return train_size, test_size, channels, ndep, pad
+
+
+def read_solve_params(solve_file):
+    """
+    Reads the atmospheric dimensions from existing SunnyNet "solving" HDF5 file.
+    """
+    tmp = h5py.File(solve_file, 'r')
+    buf = tmp['lte test windows'].shape
+    nx = int(np.sqrt(buf[0]))
+    channels = buf[1]
+    ndep = buf[2]
+    pad = (buf[-1] - 1) // 2
+    return nx, channels, ndep, pad
     
 
 def check_model_compat(model_type, pad, channels):
@@ -389,8 +402,11 @@ def sunnynet_predict_populations(model_path, train_path, test_path, save_path,
         Weight in loss calculation between mass conservation and cell by
         cell error. Default is 0.2. To switch off entirely set to None.
     """
-    n_train, n_test, channels, ndep, pad = read_train_params(train_path)
-    nx = int(np.sqrt(n_train + n_test))  # assuming square atmosphere
+    _, _, channels, ndep, pad = read_train_params(train_path)
+    nx, channels1, ndep1, npad1 = read_solve_params(test_path)
+    assert channels == channels1, "Inconsistent number of channels between train and test data"
+    assert ndep == ndep1, "Inconsistent number of depth points between train and test data"
+    assert pad == npad1, "Inconsistent padding number between train and test data"
     if not check_model_compat(model_type, pad, channels):
         raise ValueError(f"Incompatible sizes between model {model_type} "
                          f"and training set (pad={pad}, channels={channels})")    
