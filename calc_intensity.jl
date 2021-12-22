@@ -6,8 +6,7 @@ using Interpolations
 import PhysicalConstants.CODATA2018: h, k_B, R_∞, c_0, m_e, m_u, e, ε_0, a_0
 using Transparency
 using ProgressMeter
-
-
+using Base.Threads
 @derived_dimension NumberDensity Unitful.𝐋^-3
 @derived_dimension PerLength Unitful.𝐋^-1
 
@@ -18,7 +17,9 @@ const unsold_const = const_unsold(Hα)
 const quad_stark_const = const_quadratic_stark(Hα)
 
 
-# Reading utilities
+"""
+Reads atmosphere in the input format of MULTI3D. Returns a dictionary.
+"""
 function read_atmos_multi3d(par_file, atmos_file; dtype=Float32)
     data = Dict()
     # Get parameters and height scale
@@ -37,16 +38,15 @@ function read_atmos_multi3d(par_file, atmos_file; dtype=Float32)
     block_size = data[:nx] * data[:ny] * data[:nz] * sizeof(dtype)
     data[:ne] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm^-3"), 3}, shape)
     data[:temperature] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"K"), 3}, shape, block_size)
-    #data[:vx] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm/s"), 3}, shape, block_size * 2)
-    #data[:vy] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm/s"), 3}, shape, block_size * 3)
     data[:vz] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm/s"), 3}, shape, block_size * 4)
-    #data[:rho] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"g/cm^3"), 3}, shape, block_size * 5)
-    #data[:nh] = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm^-3"), 4}, (nx, ny, nz, 6), block_size * 6)
     close(fobj)
     return data
 end
 
 
+"""
+Reads NLTE populations from MULTI3D output
+"""
 function read_multi3d_pops(pop_file, shape; dtype=Float32)
     fobj = open(pop_file, "r")
     pops = Mmap.mmap(fobj, Array{typeof(one(dtype)u"cm^-3"), 4}, shape) # NLTE pops
@@ -55,7 +55,11 @@ function read_multi3d_pops(pop_file, shape; dtype=Float32)
 end
 
 
-function read_nn_pops(pop_file)
+"""
+Reads NLTE population predictions from SunnyNet. The input file is an HDF5 file
+written by SunnyNet.sunnynet_predict_populations().
+"""
+function read_sunnynet_pops(pop_file)
     pop_nn = h5read(pop_file, "populations")
     tmp = h5readattr(pop_file, "populations/")
     cmass_mean = tmp["cmass_mean"]
@@ -64,15 +68,20 @@ function read_nn_pops(pop_file)
     pop_nn = permutedims(pop_nn, [2, 1, 3, 4])
     nhydr, ny, nx = size(pop_nn)[end-2:end]
     new_pop = zeros(Float64, (nx, ny, nz, nhydr))
-    for i=1:nx, j=1:ny, l=1:nhydr
+    p = ProgressMeter.Progress(nx * ny * nhydr, desc="Reading populations ")
+    Threads.@threads for ij in CartesianIndices((nx, ny, nhydr))
+        i, j, l = Tuple(ij)
         interp = LinearInterpolation(cmass_scale, pop_nn[:, l, j, i], extrapolation_bc=Line())
         new_pop[i, j, :, l] .= interp(cmass_mean) * 1.0f-6
+        ProgressMeter.next!(p)
     end
     return new_pop * u"cm^-3"
 end
 
 
-# Physics functions
+"""
+Compute continuum extinction.
+"""
 function αcont(λ::Unitful.Length, temperature::Unitful.Temperature,
                electron_density::NumberDensity, h_ground_density::NumberDensity,
                proton_density::NumberDensity)
@@ -100,11 +109,9 @@ function calc_Halpha_1D(
 )
     nwave = length(wave)
     nz = length(z_scale)
-
     intensity = zeros(nwave)u"kW / (m^2 * nm)"
     α_total = zeros(nz)u"m^-1"
     source_function = zeros(nz)u"kW / (m^2 * nm)"
-
     # Calculate continuum opacity and wavelength-independent quantities
     α_cont = αcont.(Hα.λ0, temp, ne, hpops[:, 1], hpops[:, 6])
     j_cont = α_cont .* (blackbody_λ.(Hα.λ0, temp) .|> u"kW / (m^2 * nm)")
@@ -113,7 +120,6 @@ function calc_Halpha_1D(
     γ .+= γ_linear_stark.(ne, 3, 2)
     γ .+= γ_quadratic_stark.(ne, temp, stark_constant=quad_stark_const)
     ΔλD = doppler_width.(Hα.λ0, Hα.atom_weight, temp)
-
     # Calculate line opacity and intensity
     for (i, λ) in enumerate(wave)
         for iz in 1:nz
@@ -137,81 +143,49 @@ function calc_Halpha_1D(
 end
 
 
+"""
+Performs spectral synthesis for Hα, using NLTE populations from MULTI3D
+and predicted NLTE populations from SunnyNet (for comparison). Also needs
+an existing 3D model atmosphere in the input format of MULTI3D. File names
+and paths can be edited.
+
+FILE_WAVES is an hdf5 file with an array of wavelengths (nm in vacuum)
+to compute the line profile.
+
+This example reads the atmosphere from the output of MULTI3D, but this
+can be changed. Change the lines of read_atmos_multi3d() to read your
+simulation format. 'atmos' needs to be a dictionary with the following keys
+for atmospheric arrays :z, :temperature, :ne, :vz (need to have units using
+Unitful), plus the auxiliary dimensions :nx, :ny, and :nz.
+"""
 function do_calc()
-    SIM = "cb24bih"
-    NAME = "s489_half"
-    NN = "cb24bih_ColMass_3x3_single_50e_128b_2a_ComboData"
-    
-    
-    ####################################################################################################
-    # path to wavelengths file
-    FILE_WAVES = "path/wavelengths_Halpha.hdf5"
-    #######################
-
-    
-    if SIM == "cbh24"
-        M3D_DIR = "path/name"      # cbh24
-    else
-        M3D_DIR = "path/name"      # cb24bih, nw072100, qs006023
-    end
-    
-    FILE_NN = "path/$(NN)/$(SIM)_$(NAME).hdf5"
-
-    NN_OUTPUT = "path/$(NN)/$(SIM)_$(NAME)_2.hdf5"
-    M3D_OUTPUT = "path/multi3d/$(SIM)_$(NAME).hdf5"
-    
-    
-    NN_FOLDER = rsplit(NN_OUTPUT, '/', limit=2)[1]
-    M3D_FOLDER = rsplit(M3D_OUTPUT, '/', limit=2)[1]
-
-    if isdir(NN_FOLDER) != true
-        println("Making NN output folder...")
-        mkdir(NN_FOLDER)
-    end
-    if isdir(M3D_FOLDER) != true
-        println("Making M3D output folder...")
-        mkdir(M3D_FOLDER)
-    end
-
+    FILE_WAVES = "wavelengths.hdf5"
+    M3D_DIR = "/path/to/multi3d/output/"
+    SUNNYNET_POPS = "sunnynet_predicted.hdf5"
+    OUTPUT = "sunnynet_intensity.hdf5"
     waves = h5read(FILE_WAVES, "wavelength")u"nm"
     nwave = length(waves)
     atmos = read_atmos_multi3d(joinpath(M3D_DIR, "out_par"), joinpath(M3D_DIR, "out_atm"))
     nx, ny, nz = atmos[:nx], atmos[:ny], atmos[:nz]
-    println(nx,ny,nz)
-    z_scale = atmos[:z][32:433] .|> u"m"
-
-    if isfile(NN_OUTPUT) == true
-        println("NN intensity already calculated, moving on to M3D...")
+    lo, hi = (1, nz)  # use to slice the height scale, if needed
+    z_scale = atmos[:z][lo:hi] .|> u"m"
+    if isfile(OUTPUT)
+        println("Intensity already calculated, refusing to overwrite.")
     else
-        println("Calculating NN intensity...")
-        hpops = read_nn_pops(FILE_NN)
-        
-        #nx=252
-        #ny=252
+        hpops = read_nn_pops(SUNNYNET_POPS)
         intensity = zeros(nwave, nx, ny)u"kW / (m^2 * nm)"
-        @showprogress for iy in 1:ny, ix in 1:nx
-            intensity[:, ix, iy] = calc_Halpha_1D(z_scale, waves, atmos[:temperature][ix, iy, 32:433],
-                                                  atmos[:ne][ix, iy, 32:433], atmos[:vz][ix, iy, 32:433] .|> u"m/s",
-                                                  hpops[ix, iy, 32:433, :])
+        p = ProgressMeter.Progress(nx * ny, desc="Calculating spectra ")
+        Threads.@threads for ij in CartesianIndices((nx, ny))
+            ix, iy = Tuple(ij)
+            intensity[:, ix, iy] = calc_Halpha_1D(
+                z_scale, waves, atmos[:temperature][ix, iy, lo:hi],
+                atmos[:ne][ix, iy, lo:hi], atmos[:vz][ix, iy, lo:hi] .|> u"m/s",
+                hpops[ix, iy, lo:hi, :]
+            )
+            ProgressMeter.next!(p)
         end
-        h5write(NN_OUTPUT, "intensity", ustrip(intensity))
+        h5write(OUTPUT, "intensity", ustrip(intensity))
     end
-
-    if isfile(M3D_OUTPUT) == true
-        println("M3D intensity already calculated...")
-    else
-        println("Calculating M3D intensity...")
-        hpops = read_multi3d_pops(joinpath(M3D_DIR, "out_pop"), (atmos[:nx], atmos[:ny], atmos[:nz], Int32(6)))
-        intensity = zeros(nwave, nx, ny)u"kW / (m^2 * nm)"
-        @showprogress for iy in 1:ny, ix in 1:nx
-            intensity[:, ix, iy] = calc_Halpha_1D(z_scale, waves, atmos[:temperature][ix, iy, :],
-                                                  atmos[:ne][ix, iy, :], atmos[:vz][ix, iy, :] .|> u"m/s",
-                                                  hpops[ix, iy, :, :])
-        end
-        h5write(M3D_OUTPUT, "intensity", ustrip(intensity))
-    end
-    
-    ####################################################################################################
 end
 
 
